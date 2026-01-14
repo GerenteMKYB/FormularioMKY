@@ -1,62 +1,37 @@
-import { mutation, query } from "./_generated/server";
+import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { authTables } from "@convex-dev/auth/server";
 
-export const createOrder = mutation({
-  args: {
+const applicationTables = {
+  orders: defineTable({
+    // Identifica o usuário autenticado (inclui login anônimo).
+    // Optional para não quebrar registros legados já existentes na tabela.
+    userId: v.optional(v.id("users")),
+
     customerName: v.string(),
     customerPhone: v.string(),
     customerEmail: v.optional(v.string()),
+
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
     selectedMachine: v.string(),
     quantity: v.number(),
+
     paymentMethod: v.union(v.literal("avista"), v.literal("parcelado")),
     totalPrice: v.number(),
     installmentPrice: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Você precisa estar autenticado para enviar um pedido.");
-    }
 
-    const orderId = await ctx.db.insert("orders", {
-      createdBy: userId,
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
 
-      customerName: args.customerName,
-      customerPhone: args.customerPhone,
-      customerEmail: args.customerEmail,
+    whatsappSent: v.boolean(),
+  }).index("by_userId", ["userId"]),
+};
 
-      machineType: args.machineType,
-      selectedMachine: args.selectedMachine,
-      quantity: args.quantity,
-      paymentMethod: args.paymentMethod,
-
-      totalPrice: args.totalPrice,
-      installmentPrice: args.installmentPrice,
-
-      status: "pending",
-      whatsappSent: false,
-    });
-
-    return orderId;
-  },
-});
-
-export const listMyOrders = query({
-  args: {
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
-
-    const limit = Math.min(Math.max(args.limit ?? 10, 1), 100);
-
-    return await ctx.db
-      .query("orders")
-      .withIndex("by_createdBy", (q) => q.eq("createdBy", userId))
-      .order("desc")
-      .take(limit);
-  },
+export default defineSchema({
+  ...authTables,
+  ...applicationTables,
 });
