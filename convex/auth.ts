@@ -10,44 +10,39 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 export const loggedInUser = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      return null;
-    }
+    if (!userId) return null;
     const user = await ctx.db.get("users", userId);
-    if (!user) {
-      return null;
-    }
-    return user;
+    return user ?? null;
   },
 });
 
 /**
- * Informações simples de autenticação para o front-end.
- * Observação: "Anonymous" conta como autenticado, mas nós marcamos como isAnonymous.
+ * Informação confiável para UI:
+ * - isAnonymous: baseado no usuário salvo em "users", não no identity.email.
  */
 export const authInfo = query({
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const userId = await getAuthUserId(ctx);
 
-    if (!identity) {
+    if (!userId) {
       return {
         isAuthenticated: false,
         isAnonymous: false,
         email: null as string | null,
+        userId: null as string | null,
       };
     }
 
-    const email = (identity.email ?? null) as string | null;
-    const token = identity.tokenIdentifier ?? "";
+    const user = await ctx.db.get("users", userId);
 
-    // Heurística robusta: usuário anônimo geralmente não tem email e/ou traz "anonymous/anon" no token
-    const isAnonymous =
-      !email || token.toLowerCase().includes("anonymous") || token.toLowerCase().includes("anon");
+    const email = (user as any)?.email ?? null;
+    const isAnonymous = !email;
 
     return {
       isAuthenticated: true,
       isAnonymous,
       email,
+      userId: userId.toString(),
     };
   },
 });
