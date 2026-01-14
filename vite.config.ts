@@ -4,11 +4,10 @@ import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: "/FormularioMKY/",
   plugins: [
     react(),
-    // The code below enables dev tools like taking screenshots of your site
-    // while it is being developed on chef.convex.dev.
-    // Feel free to remove this code if you're no longer developing your app with Chef.
+    // Dev tools do Chef (somente em development)
     mode === "development"
       ? {
           name: "inject-chef-dev",
@@ -25,7 +24,7 @@ window.addEventListener('message', async (message) => {
   const worker = await import('https://chef.convex.dev/scripts/worker.bundled.mjs');
   await worker.respondToMessage(message);
 });
-            `,
+                `,
                 map: null,
               };
             }
@@ -33,7 +32,6 @@ window.addEventListener('message', async (message) => {
           },
         }
       : null,
-    // End of code for taking screenshots on chef.convex.dev.
   ].filter(Boolean),
   resolve: {
     alias: {
