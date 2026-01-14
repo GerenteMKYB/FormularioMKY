@@ -4,7 +4,7 @@ import { authTables } from "@convex-dev/auth/server";
 
 const applicationTables = {
   orders: defineTable({
-    // Vincula o pedido ao usuário autenticado (novo comportamento)
+    // Dono do pedido (usuário autenticado)
     createdBy: v.optional(v.id("users")),
 
     customerName: v.string(),
