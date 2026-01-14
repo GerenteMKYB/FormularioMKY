@@ -1,14 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-
-function isAnonymousIdentity(identity: Awaited<ReturnType<any>> | null) {
-  if (!identity) return false;
-  const email = identity.email ?? null;
-  const token = (identity.tokenIdentifier ?? "").toLowerCase();
-  return (
-    !email || token.includes("anonymous") || token.includes("anon")
-  );
-}
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 export const createOrder = mutation({
   args: {
@@ -23,21 +15,26 @@ export const createOrder = mutation({
     installmentPrice: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
       throw new Error("Você precisa estar autenticado para enviar um pedido.");
     }
 
     const orderId = await ctx.db.insert("orders", {
+      createdBy: userId,
+
       customerName: args.customerName,
       customerPhone: args.customerPhone,
       customerEmail: args.customerEmail,
+
       machineType: args.machineType,
       selectedMachine: args.selectedMachine,
       quantity: args.quantity,
       paymentMethod: args.paymentMethod,
+
       totalPrice: args.totalPrice,
       installmentPrice: args.installmentPrice,
+
       status: "pending",
       whatsappSent: false,
     });
@@ -46,19 +43,33 @@ export const createOrder = mutation({
   },
 });
 
-export const listOrders = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
+/**
+ * Lista SOMENTE os pedidos do usuário autenticado.
+ * (É isso que você quer para “Pedidos Recentes”.)
+ */
+export const listMyOrders = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
 
-    // Bloqueia “Pedidos Recentes” para login anônimo
-    if (isAnonymousIdentity(identity)) return [];
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 100);
 
-    return await ctx.db.query("orders").order("desc").collect();
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_createdBy", (q) => q.eq("createdBy", userId))
+      .order("desc")
+      .take(limit);
   },
 });
 
+/**
+ * (Opcional) Atualização de status — deixe isso apenas para admin se quiser.
+ * Por enquanto, mantive simples: exige autenticação e permite atualizar só pedidos do próprio usuário.
+ * Se você quiser que APENAS você (gerente) altere status, eu ajusto em 30 segundos.
+ */
 export const updateOrderStatus = mutation({
   args: {
     orderId: v.id("orders"),
@@ -71,14 +82,15 @@ export const updateOrderStatus = mutation({
     whatsappSent: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Não autorizado.");
-    }
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Não autorizado.");
 
-    // Evita que login anônimo altere pedidos
-    if (isAnonymousIdentity(identity)) {
-      throw new Error("Não autorizado (modo anônimo).");
+    const existing = await ctx.db.get(args.orderId);
+    if (!existing) throw new Error("Pedido não encontrado.");
+
+    // Segurança: só permite mexer em pedido próprio
+    if (existing.createdBy && existing.createdBy !== userId) {
+      throw new Error("Não autorizado para alterar pedido de outro usuário.");
     }
 
     const { orderId, ...updates } = args;
