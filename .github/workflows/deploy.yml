@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy (Convex + GitHub Pages)
 
 on:
   push:
@@ -15,7 +15,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  convex:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Deploy Convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOYMENT: ${{ secrets.CONVEX_DEPLOYMENT }}
+        run: npx convex deploy
+
   build:
+    needs: convex
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
