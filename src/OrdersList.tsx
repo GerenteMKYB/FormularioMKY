@@ -72,4 +72,31 @@ export function OrdersList({ isAdmin }: { isAdmin: boolean }) {
 
               <div className="flex flex-col items-end gap-2">
                 <div className="text-sm text-gray-600">
-                  Status: <span className="font-semibold">{statusLabel[order.status as OrderStatus]}</span
+                  Status: <span className="font-semibold">{statusLabel[order.status as OrderStatus]}</span>
+                </div>
+
+                {isAdmin && (
+                  <select
+                    value={order.status as OrderStatus}
+                    onChange={(e) =>
+                      handleStatusChange(
+                        order._id as Id<"orders">,
+                        e.target.value as OrderStatus
+                      )
+                    }
+                    className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="pending">Pendente</option>
+                    <option value="sent">Enviado</option>
+                    <option value="completed">Concluído</option>
+                    <option value="cancelled">Cancelado</option>
+                  </select>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
