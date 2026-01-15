@@ -93,11 +93,9 @@ function SectionCard({
 }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{title}</h2>
-          {subtitle && <p className="mt-1 text-sm text-white/60">{subtitle}</p>}
-        </div>
+      <div className="mb-5">
+        <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{title}</h2>
+        {subtitle && <p className="mt-1 text-sm text-white/60">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -112,8 +110,14 @@ export function MaquininhasForm() {
     customerPhone: "",
     customerEmail: "",
 
+    // Endereço em campos
     deliveryCep: "",
-    deliveryAddress: "",
+    deliveryStreet: "",
+    deliveryNumber: "",
+    deliveryComplement: "",
+    deliveryNeighborhood: "",
+    deliveryCity: "",
+    deliveryState: "",
 
     machineType: "subadquirente" as "pagseguro" | "subadquirente",
     selectedMachine: "",
@@ -121,8 +125,14 @@ export function MaquininhasForm() {
     paymentMethod: "avista" as "avista" | "parcelado",
   });
 
-  const [addressEdited, setAddressEdited] = useState(false);
-  const lastAutoFilledRef = useRef<string>("");
+  // Para não sobrescrever edições manuais após ViaCEP
+  const editedRef = useRef({
+    street: false,
+    complement: false,
+    neighborhood: false,
+    city: false,
+    state: false,
+  });
 
   const machines = useMemo(
     () => (formData.machineType === "pagseguro" ? pagSeguroMachines : subMachines),
@@ -156,7 +166,7 @@ export function MaquininhasForm() {
     return { unitPrice, totalAvista, installments, unitInstallment, totalInstallment };
   }, [selectedMachine, qty]);
 
-  // CEP -> ViaCEP
+  // CEP -> ViaCEP (auto-preenche rua/bairro/cidade/uf/complemento quando possível)
   useEffect(() => {
     const cepDigits = onlyDigits(formData.deliveryCep);
 
@@ -164,7 +174,6 @@ export function MaquininhasForm() {
       setFormData((p) => ({ ...p, deliveryCep: cepDigits }));
       return;
     }
-
     if (cepDigits.length !== 8) return;
 
     let cancelled = false;
@@ -179,29 +188,20 @@ export function MaquininhasForm() {
           toast.error("CEP não encontrado.");
           return;
         }
+        if (cancelled) return;
 
-        const parts = [
-          data.logradouro?.trim(),
-          data.bairro?.trim(),
-          data.localidade?.trim()
-            ? `${data.localidade?.trim()}/${data.uf?.trim() ?? ""}`
-            : undefined,
-        ].filter(Boolean);
-
-        const auto = parts.join(" • ").trim();
-        if (!auto || cancelled) return;
-
-        setFormData((p) => {
-          const current = (p.deliveryAddress ?? "").trim();
-          const lastAuto = (lastAutoFilledRef.current ?? "").trim();
-          const canOverwrite = !addressEdited || current === lastAuto || current.length === 0;
-          if (!canOverwrite) return p;
-
-          lastAutoFilledRef.current = auto;
-          return { ...p, deliveryAddress: auto };
-        });
-
-        setAddressEdited(false);
+        setFormData((p) => ({
+          ...p,
+          deliveryStreet: editedRef.current.street ? p.deliveryStreet : (data.logradouro ?? p.deliveryStreet ?? ""),
+          deliveryNeighborhood: editedRef.current.neighborhood
+            ? p.deliveryNeighborhood
+            : (data.bairro ?? p.deliveryNeighborhood ?? ""),
+          deliveryCity: editedRef.current.city ? p.deliveryCity : (data.localidade ?? p.deliveryCity ?? ""),
+          deliveryState: editedRef.current.state ? p.deliveryState : (data.uf ?? p.deliveryState ?? ""),
+          deliveryComplement: editedRef.current.complement
+            ? p.deliveryComplement
+            : (data.complemento ?? p.deliveryComplement ?? ""),
+        }));
       } catch {
         toast.error("Não foi possível consultar o CEP agora.");
       }
@@ -211,16 +211,36 @@ export function MaquininhasForm() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [formData.deliveryCep, addressEdited]);
+  }, [formData.deliveryCep]);
 
   const validate = () => {
     if (!formData.customerName.trim()) return "Informe o nome completo.";
     if (!formData.customerPhone.trim()) return "Informe o telefone.";
+
     if (onlyDigits(formData.deliveryCep).length !== 8) return "Informe um CEP válido (8 dígitos).";
-    if (!formData.deliveryAddress.trim()) return "Informe o endereço de entrega.";
+    if (!formData.deliveryStreet.trim()) return "Informe a rua.";
+    if (!formData.deliveryNumber.trim()) return "Informe o número.";
+    if (!formData.deliveryNeighborhood.trim()) return "Informe o bairro.";
+    if (!formData.deliveryCity.trim()) return "Informe a cidade.";
+    if (!formData.deliveryState.trim()) return "Informe o estado (UF).";
+
     if (!formData.selectedMachine.trim()) return "Selecione uma maquininha.";
     if (qty < 1 || qty > 1000) return "A quantidade deve estar entre 1 e 1000.";
     return null;
+  };
+
+  const buildDeliveryAddressString = () => {
+    const cep = onlyDigits(formData.deliveryCep);
+    const street = formData.deliveryStreet.trim();
+    const number = formData.deliveryNumber.trim();
+    const complement = formData.deliveryComplement.trim();
+    const neighborhood = formData.deliveryNeighborhood.trim();
+    const city = formData.deliveryCity.trim();
+    const uf = formData.deliveryState.trim().toUpperCase();
+
+    const line1 = `${street}, ${number}${complement ? ` - ${complement}` : ""}`;
+    const line2 = `${neighborhood} - ${city}/${uf}`;
+    return `${cep} - ${line1} • ${line2}`;
   };
 
   const onSubmit = async () => {
@@ -246,8 +266,8 @@ export function MaquininhasForm() {
         customerPhone: formData.customerPhone.trim(),
         customerEmail: formData.customerEmail.trim() ? formData.customerEmail.trim() : undefined,
 
-        // Mantém compatível com seu schema atual:
-        deliveryAddress: `${onlyDigits(formData.deliveryCep)} - ${formData.deliveryAddress.trim()}`,
+        // mantém compatibilidade com seu schema atual
+        deliveryAddress: buildDeliveryAddressString(),
 
         machineType: formData.machineType,
         selectedMachine: formData.selectedMachine,
@@ -260,24 +280,32 @@ export function MaquininhasForm() {
 
       toast.success("Pedido enviado com sucesso.", { id: sendingId });
 
+      editedRef.current = { street: false, complement: false, neighborhood: false, city: false, state: false };
+
       setFormData({
         customerName: "",
         customerPhone: "",
         customerEmail: "",
+
         deliveryCep: "",
-        deliveryAddress: "",
+        deliveryStreet: "",
+        deliveryNumber: "",
+        deliveryComplement: "",
+        deliveryNeighborhood: "",
+        deliveryCity: "",
+        deliveryState: "",
+
         machineType: "subadquirente",
         selectedMachine: "",
         quantity: 1,
         paymentMethod: "avista",
       });
-      setAddressEdited(false);
-      lastAutoFilledRef.current = "";
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao enviar pedido.", { id: sendingId });
     }
   };
 
+  // Card do modelo com layout desktop “imune” a quebra/overflow
   const MachineCard = ({ m }: { m: MachineOption }) => {
     const unit = getUnitPrice(m, qty);
     const total = unit * qty;
@@ -297,11 +325,12 @@ export function MaquininhasForm() {
         ].join(" ")}
       >
         <div className="flex items-start justify-between gap-4">
+          {/* esquerda flexível */}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <span
                 className={[
-                  "inline-flex h-4 w-4 rounded-full border",
+                  "inline-flex h-4 w-4 rounded-full border flex-shrink-0",
                   formData.selectedMachine === m.name
                     ? "border-primary bg-primary/60"
                     : "border-white/30 bg-transparent",
@@ -321,6 +350,7 @@ export function MaquininhasForm() {
             )}
           </div>
 
+          {/* direita fixa (não encolhe) */}
           <div className="text-right flex-shrink-0">
             <div className="font-semibold whitespace-nowrap tabular-nums">{formatBRL(total)}</div>
             <div className="text-xs text-white/60 whitespace-nowrap tabular-nums">
@@ -334,13 +364,12 @@ export function MaquininhasForm() {
 
   return (
     <div className="space-y-6">
-      {/* Conteúdo principal + Resumo sticky */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* coluna principal */}
         <div className="xl:col-span-8 space-y-6">
-          {/* 1) Dados e Entrega */}
           <SectionCard
             title="Dados do cliente e entrega"
-            subtitle="Informe o CEP para auto-preenchimento. O endereço permanece editável."
+            subtitle="Digite o CEP para auto-preenchimento. Você pode editar qualquer campo."
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -393,45 +422,112 @@ export function MaquininhasForm() {
                 />
               </div>
 
-              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
+              {/* Endereço em campos */}
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-1">
                   <label className="block text-sm text-white/80 mb-2">
                     CEP <span className="text-red-400">*</span>
                   </label>
                   <input
                     value={formData.deliveryCep}
-                    onChange={(e) => {
-                      const digits = onlyDigits(e.target.value);
-                      setFormData((p) => ({ ...p, deliveryCep: digits }));
-                      setAddressEdited(false);
-                    }}
+                    onChange={(e) => setFormData((p) => ({ ...p, deliveryCep: onlyDigits(e.target.value) }))}
                     inputMode="numeric"
                     maxLength={8}
                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
                     placeholder="00000000"
                   />
-                  <div className="mt-1 text-xs text-white/50">8 dígitos para preencher automaticamente.</div>
+                  <div className="mt-1 text-xs text-white/50">8 dígitos para preencher.</div>
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="block text-sm text-white/80 mb-2">
+                    Rua <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={formData.deliveryStreet}
+                    onChange={(e) => {
+                      editedRef.current.street = true;
+                      setFormData((p) => ({ ...p, deliveryStreet: e.target.value }));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Rua / Avenida"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-sm text-white/80 mb-2">
+                    Número <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={formData.deliveryNumber}
+                    onChange={(e) => setFormData((p) => ({ ...p, deliveryNumber: e.target.value }))}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Ex: 123"
+                  />
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="block text-sm text-white/80 mb-2">Complemento</label>
+                  <input
+                    value={formData.deliveryComplement}
+                    onChange={(e) => {
+                      editedRef.current.complement = true;
+                      setFormData((p) => ({ ...p, deliveryComplement: e.target.value }));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Apto, bloco, referência"
+                  />
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="block text-sm text-white/80 mb-2">
-                    Endereço de entrega <span className="text-red-400">*</span>
+                    Bairro <span className="text-red-400">*</span>
                   </label>
-                  <textarea
-                    value={formData.deliveryAddress}
+                  <input
+                    value={formData.deliveryNeighborhood}
                     onChange={(e) => {
-                      setFormData((p) => ({ ...p, deliveryAddress: e.target.value }));
-                      setAddressEdited(true);
+                      editedRef.current.neighborhood = true;
+                      setFormData((p) => ({ ...p, deliveryNeighborhood: e.target.value }));
                     }}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[92px]"
-                    placeholder="Rua, número, complemento, bairro, cidade/UF"
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Bairro"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-sm text-white/80 mb-2">
+                    Cidade <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={formData.deliveryCity}
+                    onChange={(e) => {
+                      editedRef.current.city = true;
+                      setFormData((p) => ({ ...p, deliveryCity: e.target.value }));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Cidade"
+                  />
+                </div>
+
+                <div className="md:col-span-1">
+                  <label className="block text-sm text-white/80 mb-2">
+                    UF <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={formData.deliveryState}
+                    onChange={(e) => {
+                      editedRef.current.state = true;
+                      setFormData((p) => ({ ...p, deliveryState: e.target.value.toUpperCase().slice(0, 2) }));
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
+                    placeholder="SP"
+                    maxLength={2}
                   />
                 </div>
               </div>
             </div>
           </SectionCard>
 
-          {/* 2) Modelo */}
           <SectionCard
             title="Escolha do modelo"
             subtitle="Selecione PagSeguro ou Sub e escolha o equipamento. Valores e parcelamento aparecem sem quebrar."
@@ -470,12 +566,9 @@ export function MaquininhasForm() {
           </SectionCard>
         </div>
 
-        {/* Resumo sticky */}
+        {/* resumo sticky */}
         <div className="xl:col-span-4 xl:sticky xl:top-24 space-y-6">
-          <SectionCard
-            title="Pagamento e resumo"
-            subtitle="Revise o total antes de enviar."
-          >
+          <SectionCard title="Pagamento e resumo" subtitle="Revise o total antes de enviar.">
             <div className="flex flex-wrap gap-6 mb-4">
               <label className="inline-flex items-center gap-2 text-sm">
                 <input
@@ -496,26 +589,30 @@ export function MaquininhasForm() {
               </label>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 overflow-hidden">
               {!selectedMachine ? (
                 <div className="text-sm text-white/60">Selecione um modelo para calcular o total.</div>
               ) : formData.paymentMethod === "avista" ? (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-white/60">Total à vista</span>
-                    <span className="text-2xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
+                  <div className="flex items-baseline justify-between gap-4 min-w-0">
+                    <span className="text-sm text-white/60 whitespace-nowrap flex-shrink-0">
+                      Total à vista
+                    </span>
+                    <span className="min-w-0 text-right font-semibold text-green-500 tabular-nums whitespace-nowrap text-xl lg:text-2xl">
                       {formatBRL(totals.totalAvista)}
                     </span>
                   </div>
-                  <div className="text-xs text-white/50 tabular-nums">
+                  <div className="text-xs text-white/50 tabular-nums whitespace-nowrap">
                     {qty} un. • {selectedMachine.name}
                   </div>
                 </div>
               ) : totals.unitInstallment != null ? (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-white/60">{totals.installments}x sem juros</span>
-                    <span className="text-2xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
+                  <div className="flex items-baseline justify-between gap-4 min-w-0">
+                    <span className="text-sm text-white/60 whitespace-nowrap flex-shrink-0">
+                      {totals.installments}x sem juros
+                    </span>
+                    <span className="min-w-0 text-right font-semibold text-green-500 tabular-nums whitespace-nowrap text-xl lg:text-2xl">
                       {formatBRL(totals.totalInstallment ?? 0)}
                     </span>
                   </div>
