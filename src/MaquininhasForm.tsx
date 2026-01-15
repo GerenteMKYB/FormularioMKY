@@ -8,10 +8,10 @@ type Tier = { min: number; max?: number; unitPrice: number };
 type MachineOption = {
   name: string;
   price?: number; // à vista (unitário)
-  installmentPrice?: number; // parcela unitária fixa, quando fornecida
+  installmentPrice?: number; // parcela unitária fixa (quando fornecida)
   installments?: number; // default 12
   tiers?: Tier[]; // usado para S920
-  allowAutoInstallment?: boolean; // se true, calcula parcela = unit/12 quando não tiver installmentPrice fixo
+  allowAutoInstallment?: boolean; // se true, calcula parcela = unit/12
 };
 
 type ViaCepResponse = {
@@ -59,9 +59,7 @@ function getUnitInstallment(machine: MachineOption, quantity: number): number | 
   return undefined;
 }
 
-// ========================
-// Catálogo (AJUSTADO)
-// ========================
+// Catálogo (conforme solicitado)
 const pagSeguroMachines: MachineOption[] = [
   { name: "Smart", price: 196.08, installmentPrice: 16.34, installments: 12 },
   { name: "Moderninha Pro", price: 107.88, installmentPrice: 8.99, installments: 12 },
@@ -77,12 +75,34 @@ const subMachines: MachineOption[] = [
       { min: 11, max: 19, unitPrice: 475.0 },
       { min: 20, max: 49, unitPrice: 425.0 },
       { min: 50, max: 99, unitPrice: 375.0 },
-      { min: 100, unitPrice: 325.0 }, // 100+
+      { min: 100, unitPrice: 325.0 },
     ],
     installments: 12,
-    allowAutoInstallment: true, // como é “até 12x sem juros” sem valor fixo, parcela = unit/12
+    allowAutoInstallment: true, // parcela calculada (sem juros)
   },
 ];
+
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-white/60">{subtitle}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export function MaquininhasForm() {
   const createOrder = useMutation(api.orders.createOrder);
@@ -101,7 +121,6 @@ export function MaquininhasForm() {
     paymentMethod: "avista" as "avista" | "parcelado",
   });
 
-  // Controle para não sobrescrever endereço editado pelo usuário
   const [addressEdited, setAddressEdited] = useState(false);
   const lastAutoFilledRef = useRef<string>("");
 
@@ -115,6 +134,8 @@ export function MaquininhasForm() {
     [machines, formData.selectedMachine],
   );
 
+  const qty = clampQty(formData.quantity);
+
   const totals = useMemo(() => {
     if (!selectedMachine) {
       return {
@@ -125,8 +146,6 @@ export function MaquininhasForm() {
         totalInstallment: undefined as number | undefined,
       };
     }
-
-    const qty = clampQty(formData.quantity);
     const unitPrice = getUnitPrice(selectedMachine, qty);
     const totalAvista = unitPrice * qty;
 
@@ -135,31 +154,24 @@ export function MaquininhasForm() {
     const totalInstallment = unitInstallment != null ? unitInstallment * qty : undefined;
 
     return { unitPrice, totalAvista, installments, unitInstallment, totalInstallment };
-  }, [selectedMachine, formData.quantity]);
+  }, [selectedMachine, qty]);
 
-  // ========================
-  // CEP -> ViaCEP (auto fill)
-  // ========================
+  // CEP -> ViaCEP
   useEffect(() => {
     const cepDigits = onlyDigits(formData.deliveryCep);
 
-    // mantém o input “formatado” como somente números
     if (formData.deliveryCep !== cepDigits) {
       setFormData((p) => ({ ...p, deliveryCep: cepDigits }));
       return;
     }
 
-    // só consulta quando tiver 8 dígitos
     if (cepDigits.length !== 8) return;
 
     let cancelled = false;
 
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${cepDigits}/json/`, {
-          method: "GET",
-        });
-
+        const res = await fetch(`https://viacep.com.br/ws/${cepDigits}/json/`, { method: "GET" });
         if (!res.ok) throw new Error("Falha ao consultar CEP.");
         const data = (await res.json()) as ViaCepResponse;
 
@@ -171,19 +183,17 @@ export function MaquininhasForm() {
         const parts = [
           data.logradouro?.trim(),
           data.bairro?.trim(),
-          data.localidade?.trim() ? `${data.localidade?.trim()}/${data.uf?.trim() ?? ""}` : undefined,
+          data.localidade?.trim()
+            ? `${data.localidade?.trim()}/${data.uf?.trim() ?? ""}`
+            : undefined,
         ].filter(Boolean);
 
-        const auto = parts.join(" - ").trim();
-        if (!auto) return;
+        const auto = parts.join(" • ").trim();
+        if (!auto || cancelled) return;
 
-        if (cancelled) return;
-
-        // Só auto-preenche se o usuário não tiver editado, OU se o campo ainda for o último auto-fill
         setFormData((p) => {
           const current = (p.deliveryAddress ?? "").trim();
           const lastAuto = (lastAutoFilledRef.current ?? "").trim();
-
           const canOverwrite = !addressEdited || current === lastAuto || current.length === 0;
           if (!canOverwrite) return p;
 
@@ -191,12 +201,11 @@ export function MaquininhasForm() {
           return { ...p, deliveryAddress: auto };
         });
 
-        // quando o CEP muda e o auto-fill roda, consideramos “não editado ainda”
         setAddressEdited(false);
       } catch {
         toast.error("Não foi possível consultar o CEP agora.");
       }
-    }, 350); // debounce leve
+    }, 350);
 
     return () => {
       cancelled = true;
@@ -204,73 +213,13 @@ export function MaquininhasForm() {
     };
   }, [formData.deliveryCep, addressEdited]);
 
-  const renderMachineOptions = () => {
-    const qty = clampQty(formData.quantity);
-
-    return machines.map((machine) => {
-      const unitPrice = getUnitPrice(machine, qty);
-      const totalPrice = unitPrice * qty;
-
-      const unitInstallment = getUnitInstallment(machine, qty);
-      const installments = machine.installments ?? 12;
-
-      return (
-        <label
-          key={machine.name}
-          className={[
-            "block p-4 border rounded-xl cursor-pointer transition",
-            "bg-white/5 hover:bg-white/10",
-            formData.selectedMachine === machine.name
-              ? "border-primary ring-1 ring-primary/30"
-              : "border-white/10",
-          ].join(" ")}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <input
-                type="radio"
-                name="selectedMachine"
-                value={machine.name}
-                checked={formData.selectedMachine === machine.name}
-                onChange={() => setFormData((prev) => ({ ...prev, selectedMachine: machine.name }))}
-                className="mt-1"
-              />
-
-              <div className="min-w-0">
-                <div className="font-semibold text-sm sm:text-base truncate">{machine.name}</div>
-                <div className="text-xs sm:text-sm text-gray-400 whitespace-nowrap tabular-nums">
-                  Unitário: {formatBRL(unitPrice)}
-                </div>
-                {unitInstallment != null && (
-                  <div className="text-[11px] sm:text-xs text-gray-400 whitespace-nowrap tabular-nums">
-                    {installments}x de {formatBRL(unitInstallment)} sem juros
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="text-right flex-shrink-0">
-              <div className="font-semibold whitespace-nowrap tabular-nums">
-                {formatBRL(totalPrice)}
-              </div>
-              <div className="text-[11px] sm:text-xs text-gray-400 whitespace-nowrap tabular-nums">
-                Total ({qty} un.)
-              </div>
-            </div>
-          </div>
-        </label>
-      );
-    });
-  };
-
   const validate = () => {
     if (!formData.customerName.trim()) return "Informe o nome completo.";
     if (!formData.customerPhone.trim()) return "Informe o telefone.";
     if (onlyDigits(formData.deliveryCep).length !== 8) return "Informe um CEP válido (8 dígitos).";
     if (!formData.deliveryAddress.trim()) return "Informe o endereço de entrega.";
     if (!formData.selectedMachine.trim()) return "Selecione uma maquininha.";
-    const q = clampQty(formData.quantity);
-    if (q < 1 || q > 1000) return "A quantidade deve estar entre 1 e 1000.";
+    if (qty < 1 || qty > 1000) return "A quantidade deve estar entre 1 e 1000.";
     return null;
   };
 
@@ -280,7 +229,6 @@ export function MaquininhasForm() {
       toast.error(err);
       return;
     }
-
     if (!selectedMachine) {
       toast.error("Maquininha inválida.");
       return;
@@ -288,10 +236,8 @@ export function MaquininhasForm() {
 
     const sendingId = toast.loading("Enviando pedido...");
 
-    const qty = clampQty(formData.quantity);
     const unitPrice = getUnitPrice(selectedMachine, qty);
     const totalPrice = unitPrice * qty;
-
     const unitInstallment = getUnitInstallment(selectedMachine, qty);
 
     try {
@@ -300,7 +246,7 @@ export function MaquininhasForm() {
         customerPhone: formData.customerPhone.trim(),
         customerEmail: formData.customerEmail.trim() ? formData.customerEmail.trim() : undefined,
 
-        // guarda o endereço final editável; CEP fica apenas no front (se quiser salvar no banco, eu ajusto schema/mutation)
+        // Mantém compatível com seu schema atual:
         deliveryAddress: `${onlyDigits(formData.deliveryCep)} - ${formData.deliveryAddress.trim()}`,
 
         machineType: formData.machineType,
@@ -309,22 +255,22 @@ export function MaquininhasForm() {
 
         paymentMethod: formData.paymentMethod,
         totalPrice,
-        installmentPrice: unitInstallment, // parcela unitária (fixa ou calculada)
+        installmentPrice: unitInstallment, // parcela unitária
       });
 
       toast.success("Pedido enviado com sucesso.", { id: sendingId });
 
-      setFormData((prev) => ({
-        ...prev,
+      setFormData({
         customerName: "",
         customerPhone: "",
         customerEmail: "",
         deliveryCep: "",
         deliveryAddress: "",
+        machineType: "subadquirente",
         selectedMachine: "",
         quantity: 1,
         paymentMethod: "avista",
-      }));
+      });
       setAddressEdited(false);
       lastAutoFilledRef.current = "";
     } catch (e: any) {
@@ -332,209 +278,267 @@ export function MaquininhasForm() {
     }
   };
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Coluna Esquerda */}
-      <div className="lg:col-span-4 bg-white/5 p-6 rounded-2xl shadow-sm border border-white/10">
-        <h2 className="text-lg font-semibold mb-5">Dados do Cliente</h2>
+  const MachineCard = ({ m }: { m: MachineOption }) => {
+    const unit = getUnitPrice(m, qty);
+    const total = unit * qty;
+    const installments = m.installments ?? 12;
+    const unitInst = getUnitInstallment(m, qty);
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-200 mb-2">
-              Nome Completo <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={formData.customerName}
-              onChange={(e) => setFormData((p) => ({ ...p, customerName: e.target.value }))}
-              className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder="Nome e sobrenome"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-200 mb-2">
-              Telefone <span className="text-red-400">*</span>
-            </label>
-            <input
-              value={formData.customerPhone}
-              onChange={(e) => setFormData((p) => ({ ...p, customerPhone: e.target.value }))}
-              className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder="(DDD) 9XXXX-XXXX"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-200 mb-2">E-mail</label>
-            <input
-              value={formData.customerEmail}
-              onChange={(e) => setFormData((p) => ({ ...p, customerEmail: e.target.value }))}
-              className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder="email@exemplo.com"
-            />
-          </div>
-
-          {/* CEP + Endereço */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
-              <label className="block text-sm font-medium text-gray-200 mb-2">
-                CEP <span className="text-red-400">*</span>
-              </label>
-              <input
-                value={formData.deliveryCep}
-                onChange={(e) => {
-                  const digits = onlyDigits(e.target.value);
-                  setFormData((p) => ({ ...p, deliveryCep: digits }));
-                  // ao alterar CEP, permitimos auto-preencher novamente
-                  setAddressEdited(false);
-                }}
-                inputMode="numeric"
-                className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
-                placeholder="00000000"
-                maxLength={8}
+    return (
+      <button
+        type="button"
+        onClick={() => setFormData((p) => ({ ...p, selectedMachine: m.name }))}
+        className={[
+          "w-full text-left rounded-2xl border p-4 transition",
+          "bg-black/20 hover:bg-black/30",
+          formData.selectedMachine === m.name
+            ? "border-primary/60 ring-1 ring-primary/30"
+            : "border-white/10",
+        ].join(" ")}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={[
+                  "inline-flex h-4 w-4 rounded-full border",
+                  formData.selectedMachine === m.name
+                    ? "border-primary bg-primary/60"
+                    : "border-white/30 bg-transparent",
+                ].join(" ")}
               />
-              <div className="text-xs text-gray-400 mt-1">
-                Digite 8 dígitos para preencher.
+              <div className="font-semibold truncate">{m.name}</div>
+            </div>
+
+            <div className="mt-2 text-sm text-white/70 whitespace-nowrap tabular-nums">
+              Unitário: <span className="text-white">{formatBRL(unit)}</span>
+            </div>
+
+            {unitInst != null && (
+              <div className="mt-1 text-xs text-white/60 whitespace-nowrap tabular-nums">
+                {installments}x de {formatBRL(unitInst)} sem juros
+              </div>
+            )}
+          </div>
+
+          <div className="text-right flex-shrink-0">
+            <div className="font-semibold whitespace-nowrap tabular-nums">{formatBRL(total)}</div>
+            <div className="text-xs text-white/60 whitespace-nowrap tabular-nums">
+              Total ({qty} un.)
+            </div>
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Conteúdo principal + Resumo sticky */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        <div className="xl:col-span-8 space-y-6">
+          {/* 1) Dados e Entrega */}
+          <SectionCard
+            title="Dados do cliente e entrega"
+            subtitle="Informe o CEP para auto-preenchimento. O endereço permanece editável."
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-white/80 mb-2">
+                  Nome completo <span className="text-red-400">*</span>
+                </label>
+                <input
+                  value={formData.customerName}
+                  onChange={(e) => setFormData((p) => ({ ...p, customerName: e.target.value }))}
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Nome e sobrenome"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/80 mb-2">
+                  Telefone <span className="text-red-400">*</span>
+                </label>
+                <input
+                  value={formData.customerPhone}
+                  onChange={(e) => setFormData((p) => ({ ...p, customerPhone: e.target.value }))}
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="(DDD) 9XXXX-XXXX"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/80 mb-2">E-mail</label>
+                <input
+                  value={formData.customerEmail}
+                  onChange={(e) => setFormData((p) => ({ ...p, customerEmail: e.target.value }))}
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/80 mb-2">
+                  Quantidade <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={formData.quantity}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, quantity: clampQty(Number(e.target.value)) }))
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
+                />
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-white/80 mb-2">
+                    CEP <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={formData.deliveryCep}
+                    onChange={(e) => {
+                      const digits = onlyDigits(e.target.value);
+                      setFormData((p) => ({ ...p, deliveryCep: digits }));
+                      setAddressEdited(false);
+                    }}
+                    inputMode="numeric"
+                    maxLength={8}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
+                    placeholder="00000000"
+                  />
+                  <div className="mt-1 text-xs text-white/50">8 dígitos para preencher automaticamente.</div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-white/80 mb-2">
+                    Endereço de entrega <span className="text-red-400">*</span>
+                  </label>
+                  <textarea
+                    value={formData.deliveryAddress}
+                    onChange={(e) => {
+                      setFormData((p) => ({ ...p, deliveryAddress: e.target.value }));
+                      setAddressEdited(true);
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[92px]"
+                    placeholder="Rua, número, complemento, bairro, cidade/UF"
+                  />
+                </div>
               </div>
             </div>
+          </SectionCard>
 
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-200 mb-2">
-                Endereço de entrega <span className="text-red-400">*</span>
-              </label>
-              <textarea
-                value={formData.deliveryAddress}
-                onChange={(e) => {
-                  setFormData((p) => ({ ...p, deliveryAddress: e.target.value }));
-                  setAddressEdited(true);
-                }}
-                className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 min-h-[92px]"
-                placeholder="Rua, número, complemento, bairro, cidade/UF"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-200 mb-2">Tipo de maquininha</label>
-            <div className="flex gap-6 items-center">
-              <label className="flex items-center gap-2 text-sm">
+          {/* 2) Modelo */}
+          <SectionCard
+            title="Escolha do modelo"
+            subtitle="Selecione PagSeguro ou Sub e escolha o equipamento. Valores e parcelamento aparecem sem quebrar."
+          >
+            <div className="flex flex-wrap items-center gap-5 mb-5">
+              <label className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="radio"
-                  value="subadquirente"
                   checked={formData.machineType === "subadquirente"}
                   onChange={() =>
-                    setFormData((prev) => ({ ...prev, machineType: "subadquirente", selectedMachine: "" }))
+                    setFormData((p) => ({ ...p, machineType: "subadquirente", selectedMachine: "" }))
                   }
                 />
                 Sub
               </label>
 
-              <label className="flex items-center gap-2 text-sm">
+              <label className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="radio"
-                  value="pagseguro"
                   checked={formData.machineType === "pagseguro"}
                   onChange={() =>
-                    setFormData((prev) => ({ ...prev, machineType: "pagseguro", selectedMachine: "" }))
+                    setFormData((p) => ({ ...p, machineType: "pagseguro", selectedMachine: "" }))
                   }
                 />
                 PagSeguro
               </label>
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-200 mb-2">
-              Quantidade <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={1000}
-              value={formData.quantity}
-              onChange={(e) => setFormData((prev) => ({ ...prev, quantity: clampQty(Number(e.target.value)) }))}
-              className="w-full px-3 py-2 border border-white/10 bg-black/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 tabular-nums"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Coluna Direita */}
-      <div className="lg:col-span-8 space-y-6">
-        <div className="bg-white/5 p-6 rounded-2xl shadow-sm border border-white/10">
-          <div className="flex items-center justify-between mb-4 gap-3">
-            <h2 className="text-lg font-semibold">Selecione a Maquininha</h2>
-            <div className="text-xs text-gray-400 whitespace-nowrap tabular-nums">
-              Quantidade: {clampQty(formData.quantity)}
+              <span className="text-xs text-white/50 tabular-nums">Quantidade: {qty}</span>
             </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{renderMachineOptions()}</div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {machines.map((m) => (
+                <MachineCard key={m.name} m={m} />
+              ))}
+            </div>
+          </SectionCard>
         </div>
 
-        <div className="bg-white/5 p-6 rounded-2xl shadow-sm border border-white/10">
-          <h2 className="text-lg font-semibold mb-4">Forma de Pagamento</h2>
-
-          <div className="flex gap-6 mb-4 items-center">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                value="avista"
-                checked={formData.paymentMethod === "avista"}
-                onChange={() => setFormData((prev) => ({ ...prev, paymentMethod: "avista" }))}
-              />
-              À vista
-            </label>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                value="parcelado"
-                checked={formData.paymentMethod === "parcelado"}
-                onChange={() => setFormData((prev) => ({ ...prev, paymentMethod: "parcelado" }))}
-              />
-              Parcelado (até 12x)
-            </label>
-          </div>
-
-          {/* Total em destaque */}
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            {!selectedMachine ? (
-              <div className="text-sm text-gray-400">
-                Selecione uma maquininha para visualizar o total.
-              </div>
-            ) : formData.paymentMethod === "avista" ? (
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-sm text-gray-400">Total à vista</div>
-                <div className="text-xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
-                  {formatBRL(totals.totalAvista)}
-                </div>
-              </div>
-            ) : totals.unitInstallment != null ? (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-sm text-gray-400">
-                    {totals.installments}x sem juros
-                  </div>
-                  <div className="text-xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
-                    {formatBRL((totals.totalInstallment ?? 0))}
-                  </div>
-                </div>
-                <div className="text-xs text-gray-500 tabular-nums">
-                  Parcela unitária: {formatBRL(totals.unitInstallment)} • Quantidade: {clampQty(formData.quantity)}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-400">
-                Não há informação de parcelamento para esta opção.
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={onSubmit}
-            className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:opacity-90 transition mt-4"
+        {/* Resumo sticky */}
+        <div className="xl:col-span-4 xl:sticky xl:top-24 space-y-6">
+          <SectionCard
+            title="Pagamento e resumo"
+            subtitle="Revise o total antes de enviar."
           >
-            Enviar pedido
-          </button>
+            <div className="flex flex-wrap gap-6 mb-4">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={formData.paymentMethod === "avista"}
+                  onChange={() => setFormData((p) => ({ ...p, paymentMethod: "avista" }))}
+                />
+                À vista
+              </label>
+
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={formData.paymentMethod === "parcelado"}
+                  onChange={() => setFormData((p) => ({ ...p, paymentMethod: "parcelado" }))}
+                />
+                Parcelado (até 12x)
+              </label>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              {!selectedMachine ? (
+                <div className="text-sm text-white/60">Selecione um modelo para calcular o total.</div>
+              ) : formData.paymentMethod === "avista" ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-white/60">Total à vista</span>
+                    <span className="text-2xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
+                      {formatBRL(totals.totalAvista)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-white/50 tabular-nums">
+                    {qty} un. • {selectedMachine.name}
+                  </div>
+                </div>
+              ) : totals.unitInstallment != null ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-white/60">{totals.installments}x sem juros</span>
+                    <span className="text-2xl font-semibold text-green-500 whitespace-nowrap tabular-nums">
+                      {formatBRL(totals.totalInstallment ?? 0)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-white/50 tabular-nums whitespace-nowrap">
+                    Parcela unitária: {formatBRL(totals.unitInstallment)} • {qty} un.
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-white/60">Sem informação de parcelamento para esta opção.</div>
+              )}
+            </div>
+
+            <button
+              onClick={onSubmit}
+              className="mt-4 w-full rounded-2xl bg-primary px-4 py-3 font-semibold hover:opacity-90 transition"
+            >
+              Enviar pedido
+            </button>
+
+            <div className="mt-3 text-xs text-white/50">
+              Ao enviar, você confirma que os dados estão corretos.
+            </div>
+          </SectionCard>
         </div>
       </div>
     </div>
