@@ -3,102 +3,73 @@ import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { toast } from "sonner";
 
+type OrderStatus = "pending" | "sent" | "completed" | "cancelled";
+
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function OrdersList() {
+const statusLabel: Record<OrderStatus, string> = {
+  pending: "Pendente",
+  sent: "Enviado",
+  completed: "Concluído",
+  cancelled: "Cancelado",
+};
+
+export function OrdersList({ isAdmin }: { isAdmin: boolean }) {
   const orders = useQuery(api.orders.listOrders);
   const updateOrderStatus = useMutation(api.orders.updateOrderStatus);
 
-  const handleStatusChange = async (orderId: Id<"orders">, status: string) => {
+  const handleStatusChange = async (orderId: Id<"orders">, status: OrderStatus) => {
+    if (!isAdmin) return;
+
     try {
-      await updateOrderStatus({
-        orderId,
-        status: status as "pending" | "sent" | "completed" | "cancelled",
-      });
+      await updateOrderStatus({ orderId, status });
       toast.success("Status atualizado.");
-    } catch (e) {
-      toast.error("Você não tem permissão para alterar o status.");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao atualizar status.");
     }
   };
 
-  if (!orders) {
+  if (orders === undefined) {
     return (
-      <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+      <div className="bg-white p-6 rounded-lg shadow-sm border">
+        <h2 className="text-xl font-semibold mb-4">Pedidos Recentes</h2>
+        <p className="text-gray-600">Carregando...</p>
       </div>
     );
   }
 
-  if (orders.length === 0) {
+  if (!orders.length) {
     return (
-      <div className="p-4 border rounded-lg bg-white">
-        <p className="text-sm text-gray-600">Nenhum pedido encontrado.</p>
+      <div className="bg-white p-6 rounded-lg shadow-sm border">
+        <h2 className="text-xl font-semibold mb-4">Pedidos Recentes</h2>
+        <p className="text-gray-600">Nenhum pedido encontrado.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {orders.map((order) => (
-        <div key={order._id} className="p-4 border rounded-lg bg-white">
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="font-semibold">{order.customerName}</h3>
-              <p className="text-sm text-gray-600">{order.customerPhone}</p>
-              {order.customerEmail && (
-                <p className="text-sm text-gray-600">{order.customerEmail}</p>
-              )}
-            </div>
+    <div className="bg-white p-6 rounded-lg shadow-sm border">
+      <h2 className="text-xl font-semibold mb-4">Pedidos Recentes</h2>
 
-            <div className="text-right">
-              <span className="inline-block px-2 py-1 text-xs rounded bg-gray-100">
-                {order.status}
-              </span>
-            </div>
-          </div>
+      <div className="space-y-4">
+        {orders.map((order) => (
+          <div key={order._id} className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm text-gray-500">{order.customerName}</div>
+                <div className="font-semibold">{order.selectedMachine}</div>
+                <div className="text-sm text-gray-600">
+                  Quantidade: {order.quantity} • Pagamento: {order.paymentMethod}
+                </div>
+                <div className="text-sm text-gray-700 mt-1">
+                  Total: <span className="font-semibold">{formatBRL(order.totalPrice)}</span>
+                  {order.installmentPrice != null && order.paymentMethod === "parcelado" && (
+                    <span className="text-gray-500"> (parcela: {formatBRL(order.installmentPrice)})</span>
+                  )}
+                </div>
+              </div>
 
-          <div className="mt-3 text-sm">
-            <p>
-              <strong>Máquina:</strong> {order.selectedMachine}
-            </p>
-            <p>
-              <strong>Quantidade:</strong> {order.quantity}
-            </p>
-            <p>
-              <strong>Pagamento:</strong>{" "}
-              {order.paymentMethod === "avista" ? "À vista" : "Parcelado"}
-            </p>
-            <p>
-              <strong>Total:</strong> {formatBRL(order.totalPrice)}
-            </p>
-            {order.installmentPrice && (
-              <p>
-                <strong>Parcela:</strong> 12x {formatBRL(order.installmentPrice)}
-              </p>
-            )}
-          </div>
-
-          <div className="flex justify-between items-end mt-3">
-            <div className="text-xs text-gray-400">
-              {new Date(order._creationTime).toLocaleString("pt-BR")}
-            </div>
-
-            <div className="flex space-x-2">
-              <select
-                value={order.status}
-                onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                className="text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="pending">Pendente</option>
-                <option value="sent">Enviado</option>
-                <option value="completed">Concluído</option>
-                <option value="cancelled">Cancelado</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+              <div className="flex flex-col items-end gap-2">
+                <div className="text-sm text-gray-600">
+                  Status: <span className="font-semibold">{statusLabel[order.status as OrderStatus]}</span
