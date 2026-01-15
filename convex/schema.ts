@@ -4,8 +4,11 @@ import { authTables } from "@convex-dev/auth/server";
 
 const applicationTables = {
   orders: defineTable({
-    // Optional para não quebrar pedidos antigos (legados)
+    // Identifica o usuário autenticado (inclui login anônimo).
+    // Optional para não quebrar registros legados já existentes na tabela.
     userId: v.optional(v.id("users")),
+    // Email do usuário autenticado (quando disponível). Útil para auditoria/admin.
+    userEmail: v.optional(v.string()),
 
     customerName: v.string(),
     customerPhone: v.string(),
@@ -13,7 +16,9 @@ const applicationTables = {
 
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
     selectedMachine: v.string(),
+
     quantity: v.number(),
+
     paymentMethod: v.union(v.literal("avista"), v.literal("parcelado")),
     totalPrice: v.number(),
     installmentPrice: v.optional(v.number()),
