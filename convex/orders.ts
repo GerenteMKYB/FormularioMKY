@@ -8,13 +8,13 @@ function parseAdminEmails(raw: string | undefined | null): Set<string> {
     raw
       .split(/[,;]+/g)
       .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
+      .filter(Boolean),
   );
 }
 
 async function requireAdmin(ctx: any) {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Não autorizado.");
+  if (!userId) throw new Error("Você precisa estar logado.");
 
   const user = await ctx.db.get(userId);
   const email = ((user as any)?.email as string | undefined)?.toLowerCase() ?? null;
@@ -31,6 +31,7 @@ export const createOrder = mutation({
     customerName: v.string(),
     customerPhone: v.string(),
     customerEmail: v.optional(v.string()),
+    deliveryAddress: v.string(),
 
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
     selectedMachine: v.string(),
@@ -53,6 +54,7 @@ export const createOrder = mutation({
       customerName: args.customerName,
       customerPhone: args.customerPhone,
       customerEmail: args.customerEmail,
+      deliveryAddress: args.deliveryAddress,
 
       machineType: args.machineType,
       selectedMachine: args.selectedMachine,
@@ -93,7 +95,7 @@ export const updateOrderStatus = mutation({
       v.literal("pending"),
       v.literal("sent"),
       v.literal("completed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
     ),
   },
   handler: async (ctx, args) => {
