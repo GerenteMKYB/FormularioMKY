@@ -13,6 +13,7 @@ const applicationTables = {
     customerName: v.string(),
     customerPhone: v.string(),
     customerEmail: v.optional(v.string()),
+    deliveryAddress: v.string(),
 
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
     selectedMachine: v.string(),
@@ -27,7 +28,7 @@ const applicationTables = {
       v.literal("pending"),
       v.literal("sent"),
       v.literal("completed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
     ),
 
     whatsappSent: v.boolean(),
