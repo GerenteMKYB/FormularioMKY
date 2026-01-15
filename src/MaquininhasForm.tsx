@@ -3,23 +3,21 @@ import { useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { toast } from "sonner";
 
-interface MachineOption {
+type MachineOption = {
   name: string;
   price: number;
-  installmentPrice: number;
-}
-
-const formatBRL = (value: number) =>
-  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  installmentPrice?: number;
+};
 
 const pagSeguroMachines: MachineOption[] = [
-  { name: "Smart", price: 196.08, installmentPrice: 16.34 },
-  { name: "Moderninha Pro", price: 107.88, installmentPrice: 8.99 },
-  { name: "Minizinha Chip", price: 47.88, installmentPrice: 3.99 },
+  { name: "Minizinha Chip", price: 47.88 },
+  { name: "Moderninha Pro", price: 107.88 },
+  { name: "POS A960", price: 525 },
 ];
 
 const subadquirenteMachines: MachineOption[] = [
-  { name: "POS A960", price: 826, installmentPrice: 69 },
+  { name: "Smart", price: 196.08 },
+  { name: "Pro", price: 399.9 },
 ];
 
 export function MaquininhasForm() {
@@ -29,192 +27,171 @@ export function MaquininhasForm() {
     customerName: "",
     customerPhone: "",
     customerEmail: "",
-    machineType: "pagseguro" as "pagseguro" | "subadquirente",
+
+    machineType: "subadquirente" as "pagseguro" | "subadquirente",
     selectedMachine: "",
     quantity: 1,
     paymentMethod: "avista" as "avista" | "parcelado",
   });
 
   const renderMachineOptions = () => {
-    if (formData.machineType === "pagseguro") {
-      return pagSeguroMachines.map((machine) => {
-        const totalPrice = machine.price * formData.quantity;
-        const installmentPrice = machine.installmentPrice * formData.quantity;
+    const machines =
+      formData.machineType === "pagseguro" ? pagSeguroMachines : subadquirenteMachines;
 
-        return (
-          <div
-            key={machine.name}
-            className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-              formData.selectedMachine === machine.name
-                ? "border-primary bg-primary/5"
-                : "border-gray-200 hover:border-gray-300"
-            }`}
-            onClick={() =>
-              setFormData((prev) => ({ ...prev, selectedMachine: machine.name }))
-            }
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-lg">{machine.name}</h3>
-                <p className="text-sm text-gray-600">
-                  Unitário: {formatBRL(machine.price)} à vista ou 12x{" "}
-                  {formatBRL(machine.installmentPrice)}
-                </p>
-
-                {formData.quantity > 1 && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    Total ({formData.quantity}x): {formatBRL(totalPrice)} à vista
-                    ou 12x {formatBRL(installmentPrice)}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      });
-    }
-
-    return subadquirenteMachines.map((machine) => {
+    return machines.map((machine) => {
       const totalPrice = machine.price * formData.quantity;
-      const installmentPrice = machine.installmentPrice * formData.quantity;
 
       return (
-        <div
+        <label
           key={machine.name}
-          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+          className={`block p-4 border rounded-lg cursor-pointer transition ${
             formData.selectedMachine === machine.name
               ? "border-primary bg-primary/5"
               : "border-gray-200 hover:border-gray-300"
           }`}
-          onClick={() =>
-            setFormData((prev) => ({ ...prev, selectedMachine: machine.name }))
-          }
         >
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="font-semibold text-lg">{machine.name}</h3>
-              <p className="text-sm text-gray-600">
-                Unitário: {formatBRL(machine.price)} à vista ou 12x{" "}
-                {formatBRL(machine.installmentPrice)}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <input
+                type="radio"
+                name="selectedMachine"
+                value={machine.name}
+                checked={formData.selectedMachine === machine.name}
+                onChange={() =>
+                  setFormData((prev) => ({ ...prev, selectedMachine: machine.name }))
+                }
+              />
+              <div>
+                <div className="font-medium">{machine.name}</div>
+                <div className="text-sm text-gray-600">
+                  Unitário:{" "}
+                  {machine.price.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                </div>
+              </div>
+            </div>
 
-              {formData.quantity > 1 && (
-                <p className="text-sm text-gray-600 mt-1">
-                  Total ({formData.quantity}x): {formatBRL(totalPrice)} à vista
-                  ou 12x {formatBRL(installmentPrice)}
-                </p>
+            <div className="text-right">
+              <div className="font-semibold">
+                {totalPrice.toLocaleString("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                })}
+              </div>
+              {machine.installmentPrice && (
+                <div className="text-xs text-gray-500">
+                  Parcela:{" "}
+                  {machine.installmentPrice.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                </div>
               )}
             </div>
           </div>
-        </div>
+        </label>
       );
     });
   };
 
-  const calculateSelectedMachinePrices = () => {
+  const validate = () => {
+    if (!formData.customerName.trim()) return "Informe o nome completo.";
+    if (!formData.customerPhone.trim()) return "Informe o telefone.";
+    if (!formData.selectedMachine.trim()) return "Selecione uma maquininha.";
+    if (!Number.isFinite(formData.quantity) || formData.quantity < 1 || formData.quantity > 100) {
+      return "A quantidade deve estar entre 1 e 100.";
+    }
+    return null;
+  };
+
+  const onSubmit = async () => {
+    const err = validate();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+
     const machines =
       formData.machineType === "pagseguro" ? pagSeguroMachines : subadquirenteMachines;
 
     const selected = machines.find((m) => m.name === formData.selectedMachine);
-    if (!selected) return { totalPrice: 0, installmentPrice: 0 };
-
-    return {
-      totalPrice: selected.price * formData.quantity,
-      installmentPrice: selected.installmentPrice * formData.quantity,
-    };
-  };
-
-  const { totalPrice, installmentPrice } = calculateSelectedMachinePrices();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.selectedMachine) {
-      toast.error("Selecione uma máquina.");
+    if (!selected) {
+      toast.error("Maquininha inválida.");
       return;
     }
 
+    const totalPrice = selected.price * formData.quantity;
+
     try {
       await createOrder({
-        customerName: formData.customerName,
-        customerPhone: formData.customerPhone,
-        customerEmail: formData.customerEmail || undefined,
+        customerName: formData.customerName.trim(),
+        customerPhone: formData.customerPhone.trim(),
+        customerEmail: formData.customerEmail.trim() ? formData.customerEmail.trim() : undefined,
+
         machineType: formData.machineType,
         selectedMachine: formData.selectedMachine,
         quantity: formData.quantity,
+
         paymentMethod: formData.paymentMethod,
         totalPrice,
-        installmentPrice: formData.paymentMethod === "parcelado" ? installmentPrice : undefined,
+        installmentPrice: selected.installmentPrice,
       });
 
       toast.success("Pedido enviado com sucesso.");
 
-      setFormData({
+      setFormData((prev) => ({
+        ...prev,
         customerName: "",
         customerPhone: "",
         customerEmail: "",
-        machineType: "pagseguro",
         selectedMachine: "",
         quantity: 1,
         paymentMethod: "avista",
-      });
-    } catch (error) {
-      toast.error("Erro ao enviar pedido.");
+      }));
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao enviar pedido.");
     }
   };
 
   return (
-    <div className="w-full max-w-2xl">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-4">Dados do Cliente</h2>
+    <div className="bg-white p-6 rounded-lg shadow-sm border">
+      <h2 className="text-xl font-semibold mb-4">Dados do Cliente</h2>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Nome Completo *
-              </label>
-              <input
-                type="text"
-                value={formData.customerName}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, customerName: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                required
-              />
-            </div>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Nome Completo <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={formData.customerName}
+            onChange={(e) => setFormData((p) => ({ ...p, customerName: e.target.value }))}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Telefone *
-              </label>
-              <input
-                type="tel"
-                value={formData.customerPhone}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, customerPhone: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="(11) 99999-9999"
-                required
-              />
-            </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Telefone <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={formData.customerPhone}
+            onChange={(e) => setFormData((p) => ({ ...p, customerPhone: e.target.value }))}
+            placeholder="(11) 99999-9999"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Email (opcional)
-              </label>
-              <input
-                type="email"
-                value={formData.customerEmail}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, customerEmail: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Email (opcional)
+          </label>
+          <input
+            value={formData.customerEmail}
+            onChange={(e) => setFormData((p) => ({ ...p, customerEmail: e.target.value }))}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-sm border">
@@ -254,11 +231,30 @@ export function MaquininhasForm() {
             </label>
           </div>
 
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Quantidade de maquininhas <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={formData.quantity}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                const safe = Number.isFinite(n) ? Math.min(Math.max(n, 1), 100) : 1;
+                setFormData((prev) => ({ ...prev, quantity: safe }));
+              }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <p className="mt-1 text-xs text-gray-500">Máximo: 100 unidades por pedido.</p>
+          </div>
+
           <div className="space-y-3">{renderMachineOptions()}</div>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h2 className="text-xl font-semibold mb-4">Pagamento</h2>
+          <h2 className="text-xl font-semibold mb-4">Forma de Pagamento</h2>
 
           <div className="flex gap-4 mb-4">
             <label className="flex items-center gap-2">
@@ -266,9 +262,7 @@ export function MaquininhasForm() {
                 type="radio"
                 value="avista"
                 checked={formData.paymentMethod === "avista"}
-                onChange={() =>
-                  setFormData((prev) => ({ ...prev, paymentMethod: "avista" }))
-                }
+                onChange={() => setFormData((prev) => ({ ...prev, paymentMethod: "avista" }))}
               />
               À vista
             </label>
@@ -282,31 +276,18 @@ export function MaquininhasForm() {
                   setFormData((prev) => ({ ...prev, paymentMethod: "parcelado" }))
                 }
               />
-              Parcelado (12x)
+              Parcelado
             </label>
           </div>
-
-          {formData.selectedMachine && (
-            <div className="p-4 bg-gray-50 rounded-md">
-              <p className="font-semibold">
-                Total: {formatBRL(totalPrice)}
-              </p>
-              {formData.paymentMethod === "parcelado" && (
-                <p className="text-sm text-gray-600 mt-1">
-                  12x de {formatBRL(installmentPrice)}
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
         <button
-          type="submit"
-          className="w-full py-3 rounded-md bg-primary text-white font-semibold hover:opacity-90 transition"
+          onClick={onSubmit}
+          className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:opacity-90 transition"
         >
-          Enviar Pedido
+          Enviar pedido
         </button>
-      </form>
+      </div>
     </div>
   );
 }
