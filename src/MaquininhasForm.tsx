@@ -3,26 +3,103 @@ import { useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { toast } from "sonner";
 
+type Tier = { min: number; max?: number; unitPrice: number };
+
 type MachineOption = {
   name: string;
-  price: number; // à vista (unitário)
-  installmentPrice?: number; // valor da parcela (unitário), quando aplicável
-  installments?: number; // número de parcelas (default 12 quando houver installmentPrice)
+
+  // Preço unitário fixo (à vista)
+  price?: number;
+
+  // Parcela unitária fixa (quando fornecida pelo negócio)
+  installmentPrice?: number;
+
+  // Se não vier, assume 12 quando houver parcelado
+  installments?: number;
+
+  // Preço escalonado por quantidade (unitário) — usado para S920
+  tiers?: Tier[];
+
+  // Se true e não houver installmentPrice fixo, calcula parcela = total/12
+  allowAutoInstallment?: boolean;
 };
-
-const pagSeguroMachines: MachineOption[] = [
-  { name: "Minizinha Chip", price: 47.88 },
-  { name: "Moderninha Pro", price: 107.88 },
-  { name: "POS A960", price: 525 },
-];
-
-const subadquirenteMachines: MachineOption[] = [
-  { name: "Smart", price: 196.08 },
-  { name: "Pro", price: 399.9 },
-];
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function clampQty(n: number) {
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(Math.max(Math.trunc(n), 1), 1000);
+}
+
+function getUnitPrice(machine: MachineOption, quantity: number): number {
+  if (machine.tiers?.length) {
+    const q = clampQty(quantity);
+    const tier =
+      machine.tiers.find((t) => q >= t.min && (t.max == null || q <= t.max)) ??
+      machine.tiers[machine.tiers.length - 1];
+    return tier.unitPrice;
+  }
+  return machine.price ?? 0;
+}
+
+function getUnitInstallment(machine: MachineOption, quantity: number): number | undefined {
+  if (machine.installmentPrice != null) return machine.installmentPrice;
+
+  if (machine.allowAutoInstallment) {
+    const installments = machine.installments ?? 12;
+    const unit = getUnitPrice(machine, quantity);
+    if (unit <= 0 || installments <= 0) return undefined;
+    return unit / installments;
+  }
+
+  return undefined;
+}
+
+// ========================
+// Catálogo (AJUSTADO)
+// ========================
+const pagSeguroMachines: MachineOption[] = [
+  {
+    name: "Smart",
+    price: 196.08,
+    installmentPrice: 16.34,
+    installments: 12,
+  },
+  {
+    name: "Moderninha Pro",
+    price: 107.88,
+    installmentPrice: 8.99,
+    installments: 12,
+  },
+  {
+    name: "Minizinha Chip",
+    price: 47.88,
+    installmentPrice: 3.99,
+    installments: 12,
+  },
+];
+
+const subMachines: MachineOption[] = [
+  {
+    name: "POS A960",
+    price: 826.0,
+    installmentPrice: 69.0,
+    installments: 12,
+  },
+  {
+    name: "S920",
+    tiers: [
+      { min: 1, max: 10, unitPrice: 525.0 },
+      { min: 11, max: 19, unitPrice: 475.0 },
+      { min: 20, max: 49, unitPrice: 425.0 },
+      { min: 50, max: 99, unitPrice: 375.0 },
+      { min: 100, unitPrice: 325.0 }, // 100+ (interpretei “+100” como 100 ou mais)
+    ],
+    installments: 12,
+    allowAutoInstallment: true, // parcela = total/12 (já que o valor exato não foi informado)
+  },
+];
 
 export function MaquininhasForm() {
   const createOrder = useMutation(api.orders.createOrder);
@@ -40,7 +117,7 @@ export function MaquininhasForm() {
   });
 
   const machines = useMemo(
-    () => (formData.machineType === "pagseguro" ? pagSeguroMachines : subadquirenteMachines),
+    () => (formData.machineType === "pagseguro" ? pagSeguroMachines : subMachines),
     [formData.machineType],
   );
 
@@ -50,19 +127,39 @@ export function MaquininhasForm() {
   );
 
   const totals = useMemo(() => {
-    const unitPrice = selectedMachine?.price ?? 0;
-    const totalAvista = unitPrice * formData.quantity;
+    if (!selectedMachine) {
+      return {
+        unitPrice: 0,
+        totalAvista: 0,
+        installments: 12,
+        unitInstallment: undefined as number | undefined,
+        totalInstallment: undefined as number | undefined,
+      };
+    }
 
-    const installments = selectedMachine?.installments ?? 12;
-    const unitInstallment = selectedMachine?.installmentPrice;
-    const totalInstallment = unitInstallment != null ? unitInstallment * formData.quantity : undefined;
+    const qty = clampQty(formData.quantity);
+    const unitPrice = getUnitPrice(selectedMachine, qty);
+    const totalAvista = unitPrice * qty;
+
+    const installments = selectedMachine.installments ?? 12;
+    const unitInstallment = getUnitInstallment(selectedMachine, qty);
+    const totalInstallment =
+      unitInstallment != null ? unitInstallment * qty : undefined;
 
     return { unitPrice, totalAvista, installments, unitInstallment, totalInstallment };
   }, [selectedMachine, formData.quantity]);
 
   const renderMachineOptions = () => {
+    const qty = clampQty(formData.quantity);
+
     return machines.map((machine) => {
-      const totalPrice = machine.price * formData.quantity;
+      const unitPrice = getUnitPrice(machine, qty);
+      const totalPrice = unitPrice * qty;
+
+      const unitInstallment = getUnitInstallment(machine, qty);
+      const installments = machine.installments ?? 12;
+      const totalInstallment =
+        unitInstallment != null ? unitInstallment * qty : undefined;
 
       return (
         <label
@@ -73,7 +170,7 @@ export function MaquininhasForm() {
               : "border-gray-200 hover:border-gray-300"
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <input
                 type="radio"
@@ -84,14 +181,19 @@ export function MaquininhasForm() {
               />
               <div>
                 <div className="font-medium">{machine.name}</div>
-                <div className="text-sm text-gray-600">Unitário: {formatBRL(machine.price)}</div>
+                <div className="text-sm text-gray-600">
+                  Unitário: {formatBRL(unitPrice)}
+                </div>
               </div>
             </div>
 
             <div className="text-right">
               <div className="font-semibold">{formatBRL(totalPrice)}</div>
-              {machine.installmentPrice != null && (
-                <div className="text-xs text-gray-500">Parcela: {formatBRL(machine.installmentPrice)}</div>
+
+              {unitInstallment != null && (
+                <div className="text-xs text-gray-500">
+                  {installments}x de {formatBRL(totalInstallment ?? 0)} (total das parcelas)
+                </div>
               )}
             </div>
           </div>
@@ -105,9 +207,8 @@ export function MaquininhasForm() {
     if (!formData.customerPhone.trim()) return "Informe o telefone.";
     if (!formData.deliveryAddress.trim()) return "Informe o endereço de entrega.";
     if (!formData.selectedMachine.trim()) return "Selecione uma maquininha.";
-    if (!Number.isFinite(formData.quantity) || formData.quantity < 1 || formData.quantity > 100) {
-      return "A quantidade deve estar entre 1 e 100.";
-    }
+    const q = clampQty(formData.quantity);
+    if (q < 1 || q > 1000) return "A quantidade deve estar entre 1 e 1000.";
     return null;
   };
 
@@ -123,25 +224,31 @@ export function MaquininhasForm() {
       return;
     }
 
-    // Toast imediato ao clique (confirmação de ação)
     const sendingId = toast.loading("Enviando pedido...");
 
-    const totalPrice = selectedMachine.price * formData.quantity;
+    const qty = clampQty(formData.quantity);
+    const unitPrice = getUnitPrice(selectedMachine, qty);
+    const totalPrice = unitPrice * qty;
+
+    const unitInstallment = getUnitInstallment(selectedMachine, qty);
 
     try {
       await createOrder({
         customerName: formData.customerName.trim(),
         customerPhone: formData.customerPhone.trim(),
-        customerEmail: formData.customerEmail.trim() ? formData.customerEmail.trim() : undefined,
+        customerEmail: formData.customerEmail.trim()
+          ? formData.customerEmail.trim()
+          : undefined,
         deliveryAddress: formData.deliveryAddress.trim(),
 
         machineType: formData.machineType,
         selectedMachine: formData.selectedMachine,
-        quantity: formData.quantity,
+        quantity: qty,
 
         paymentMethod: formData.paymentMethod,
         totalPrice,
-        installmentPrice: selectedMachine.installmentPrice,
+        // Mantém como “parcela unitária” no banco (como já estava no seu fluxo)
+        installmentPrice: unitInstallment,
       });
 
       toast.success("Pedido enviado com sucesso.", { id: sendingId });
@@ -225,7 +332,7 @@ export function MaquininhasForm() {
                     setFormData((prev) => ({ ...prev, machineType: "subadquirente", selectedMachine: "" }))
                   }
                 />
-                Subadquirente
+                Sub
               </label>
 
               <label className="flex items-center gap-2">
@@ -249,12 +356,11 @@ export function MaquininhasForm() {
             <input
               type="number"
               min={1}
-              max={100}
+              max={1000}
               value={formData.quantity}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                const safe = Number.isFinite(n) ? Math.min(Math.max(n, 1), 100) : 1;
-                setFormData((prev) => ({ ...prev, quantity: safe }));
+                setFormData((prev) => ({ ...prev, quantity: clampQty(n) }));
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
@@ -289,18 +395,19 @@ export function MaquininhasForm() {
                 checked={formData.paymentMethod === "parcelado"}
                 onChange={() => setFormData((prev) => ({ ...prev, paymentMethod: "parcelado" }))}
               />
-              Parcelado
+              Parcelado (até 12x)
             </label>
           </div>
 
-          {/* Total em tempo real (verde) */}
           <div className="rounded-lg border border-gray-200 p-4">
             {!selectedMachine ? (
               <div className="text-sm text-gray-600">Selecione uma maquininha para visualizar o total.</div>
             ) : formData.paymentMethod === "avista" ? (
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">Total à vista</div>
-                <div className="text-lg font-semibold text-green-600">{formatBRL(totals.totalAvista)}</div>
+                <div className="text-lg font-semibold text-green-600">
+                  {formatBRL(totals.totalAvista)}
+                </div>
               </div>
             ) : totals.unitInstallment != null ? (
               <div className="space-y-1">
@@ -313,13 +420,12 @@ export function MaquininhasForm() {
                   </div>
                 </div>
                 <div className="text-xs text-gray-500">
-                  Parcela unitária: {formatBRL(totals.unitInstallment)} • Quantidade: {formData.quantity}
+                  Parcela unitária: {formatBRL(totals.unitInstallment)} • Quantidade: {clampQty(formData.quantity)}
                 </div>
               </div>
             ) : (
               <div className="text-sm text-gray-600">
-                Esta maquininha não possui valor parcelado cadastrado. Selecione “À vista” ou cadastre o valor de
-                parcela.
+                Não há valor de parcela disponível para esta opção.
               </div>
             )}
           </div>
