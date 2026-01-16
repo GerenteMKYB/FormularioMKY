@@ -13,7 +13,7 @@ const applicationTables = {
     customerName: v.string(),
     customerPhone: v.string(),
     customerEmail: v.optional(v.string()),
-    deliveryAddress: v.string(),
+    deliveryAddress: v.optional(v.string()),
 
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
     selectedMachine: v.string(),
