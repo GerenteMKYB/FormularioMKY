@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Authenticated, Unauthenticated } from "convex/react";
@@ -14,14 +15,12 @@ export default function App() {
 
   const isAdmin = !!authInfo?.isAdmin;
 
+  // Abas do topo (só admin vê)
+  const [activeTab, setActiveTab] = useState<"pedidos" | "admin">("pedidos");
+
   return (
     <div className="min-h-screen bg-[#0b0c10] text-white">
-      {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-black/40 backdrop-blur">
-        {/*
-          Força a experiência "tablet" em monitores: limita a largura do conteúdo e evita
-          grids de desktop que comprimem o layout e causam overflow nos valores.
-        */}
         <div className="mx-auto w-full max-w-[920px] px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-8 w-8 rounded-xl bg-primary/25 border border-primary/30" />
@@ -50,7 +49,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Conteúdo com largura "tablet" fixa */}
       <main className="mx-auto w-full max-w-[920px] px-4 py-10">
         <Unauthenticated>
           <div className="max-w-md mx-auto bg-white/5 p-6 rounded-2xl border border-white/10">
@@ -61,8 +59,7 @@ export default function App() {
         </Unauthenticated>
 
         <Authenticated>
-          {/* Hero */}
-          <section className="mb-8">
+          <section className="mb-6">
             <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 p-8">
               <div className="max-w-3xl">
                 <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
@@ -75,17 +72,46 @@ export default function App() {
             </div>
           </section>
 
+          {/* Menu ADM separado */}
           {isAdmin && (
-            <section className="mb-8">
-              <AdminPanel />
+            <section className="mb-6">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-2 flex gap-2">
+                <button
+                  className={[
+                    "flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition",
+                    activeTab === "pedidos"
+                      ? "bg-primary text-white"
+                      : "bg-black/20 text-white/70 hover:bg-black/30",
+                  ].join(" ")}
+                  onClick={() => setActiveTab("pedidos")}
+                >
+                  Pedidos
+                </button>
+
+                <button
+                  className={[
+                    "flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition",
+                    activeTab === "admin"
+                      ? "bg-primary text-white"
+                      : "bg-black/20 text-white/70 hover:bg-black/30",
+                  ].join(" ")}
+                  onClick={() => setActiveTab("admin")}
+                >
+                  Painel ADM
+                </button>
+              </div>
             </section>
           )}
 
-          {/* Sempre em coluna única (como tablet) */}
-          <section className="space-y-6">
-            <MaquininhasForm />
-            <OrdersList isAdmin={isAdmin} />
-          </section>
+          {/* Conteúdo por aba */}
+          {isAdmin && activeTab === "admin" ? (
+            <AdminPanel />
+          ) : (
+            <section className="space-y-6">
+              <MaquininhasForm />
+              <OrdersList isAdmin={isAdmin} />
+            </section>
+          )}
         </Authenticated>
       </main>
 
