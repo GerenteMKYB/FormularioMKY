@@ -324,8 +324,12 @@ export function MaquininhasForm() {
             : "border-white/10",
         ].join(" ")}
       >
-        <div className="flex items-start justify-between gap-4">
-          {/* esquerda flexível */}
+        {/*
+          Layout do card pensado para não "repetir" valor (principalmente quando qty=1)
+          e para manter alinhamento perfeito em qualquer largura.
+        */}
+        <div className="grid grid-cols-[1fr_auto] items-start gap-4">
+          {/* Esquerda */}
           <div className="min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               <span
@@ -339,23 +343,24 @@ export function MaquininhasForm() {
               <div className="font-semibold truncate">{m.name}</div>
             </div>
 
-            <div className="mt-2 text-sm text-white/70 whitespace-nowrap tabular-nums">
-              Unitário: <span className="text-white">{formatBRL(unit)}</span>
-            </div>
-
             {unitInst != null && (
-              <div className="mt-1 text-xs text-white/60 whitespace-nowrap tabular-nums">
+              <div className="mt-2 text-xs text-white/60 whitespace-nowrap tabular-nums">
                 {installments}x de {formatBRL(unitInst)} sem juros
+              </div>
+            )}
+
+            {/* Só mostra Total quando quantidade > 1, evitando o "valor 3x" quando qty=1 */}
+            {qty > 1 && (
+              <div className="mt-2 text-sm text-white/70 tabular-nums">
+                Total ({qty} un.): <span className="text-white font-semibold">{formatBRL(total)}</span>
               </div>
             )}
           </div>
 
-          {/* direita fixa (não encolhe) */}
+          {/* Direita: preço unitário destacado */}
           <div className="text-right flex-shrink-0">
-            <div className="font-semibold whitespace-nowrap tabular-nums">{formatBRL(total)}</div>
-            <div className="text-xs text-white/60 whitespace-nowrap tabular-nums">
-              Total ({qty} un.)
-            </div>
+            <div className="font-semibold whitespace-nowrap tabular-nums">{formatBRL(unit)}</div>
+            <div className="text-xs text-white/60 whitespace-nowrap">Unitário</div>
           </div>
         </div>
       </button>
