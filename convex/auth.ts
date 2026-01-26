@@ -1,5 +1,3 @@
-"use node";
-
 import { convexAuth, getAuthUserId } from "@convex-dev/auth/server";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { query } from "./_generated/server";
@@ -37,9 +35,7 @@ export const authInfo = query({
       };
     }
 
-    // Observação: dependendo do seu schema, ctx.db.get pode ser só ctx.db.get(userId).
-    // Mantive como você enviou para não mudar seu fluxo agora.
-    const user = await (ctx.db as any).get("users", userId);
+    const user = await ctx.db.get("users", userId);
     const email =
       ((user as any)?.email as string | undefined)?.toLowerCase() ?? null;
 
@@ -51,7 +47,7 @@ export const authInfo = query({
       isAnonymous: false,
       isAdmin,
       email,
-      userId: userId as any,
+      userId: userId.toString(),
     };
   },
 });
