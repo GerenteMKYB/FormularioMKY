@@ -5,7 +5,7 @@ import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 export const GmailOTPPasswordReset = {
   id: "gmail-otp-reset",
-  type: "email" as const,
+  type: "email" as const, // <- ESSENCIAL (não pode ser string genérico)
   name: "Gmail OTP Reset",
 
   async generateVerificationToken() {
@@ -14,8 +14,6 @@ export const GmailOTPPasswordReset = {
         crypto.getRandomValues(bytes);
       },
     };
-
-    // 6 dígitos numéricos
     return generateRandomString(random, "0123456789", 6);
   },
 
@@ -25,6 +23,7 @@ export const GmailOTPPasswordReset = {
   }: {
     identifier: string;
     token: string;
+    provider?: unknown;
   }) {
     const clientId = process.env.GMAIL_CLIENT_ID;
     const clientSecret = process.env.GMAIL_CLIENT_SECRET;
@@ -33,11 +32,10 @@ export const GmailOTPPasswordReset = {
 
     if (!clientId || !clientSecret || !refreshToken || !sender) {
       throw new Error(
-        "Gmail OTP: variáveis ausentes. Defina GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN e GMAIL_SENDER_EMAIL."
+        "Gmail OTP: variáveis ausentes. Defina GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN e GMAIL_SENDER_EMAIL no Convex."
       );
     }
 
-    // OAuth2 via refresh_token (sem redirect_uri)
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
     oauth2Client.setCredentials({ refresh_token: refreshToken });
 
@@ -65,20 +63,9 @@ export const GmailOTPPasswordReset = {
       .replace(/\//g, "_")
       .replace(/=+$/g, "");
 
-    try {
-      await gmail.users.messages.send({
-        userId: "me",
-        requestBody: { raw },
-      });
-    } catch (err: any) {
-      const details =
-        err?.response?.data?.error?.message ??
-        err?.response?.data?.error_description ??
-        err?.message ??
-        "Erro desconhecido ao enviar via Gmail API";
-
-      console.error("[GmailOTPPasswordReset] Gmail API error:", err?.response?.data ?? err);
-      throw new Error("Falha ao enviar e-mail via Gmail API: " + details);
-    }
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw },
+    });
   },
 };
