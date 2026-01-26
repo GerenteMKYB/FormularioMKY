@@ -1,15 +1,19 @@
+"use node";
+
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
-import { api } from "./_generated/api";
-import { ConvexHttpClient } from "convex/browser";
+import { google } from "googleapis";
 
 /**
- * Provider de reset de senha via Gmail (Convex Auth / Password).
+ * Provider de reset de senha via Gmail API (OAuth2 refresh token).
  *
- * IMPORTANTÍSSIMO:
- * - Não importamos "googleapis" aqui (isso quebra no bundler).
- * - O envio real é feito por uma Action Node em convex/gmailSend.ts ("use node").
+ * Requer no Convex Environment Variables:
+ * - GMAIL_CLIENT_ID
+ * - GMAIL_CLIENT_SECRET
+ * - GMAIL_REFRESH_TOKEN
+ * - GMAIL_SENDER_EMAIL
  */
 export const GmailOTPPasswordReset = {
+  // Campos exigidos pelo modelo de provider do Auth.js (o erro TS2322 era sobre isso)
   id: "gmail-otp-reset",
   type: "email",
   name: "Gmail OTP Reset",
@@ -23,31 +27,77 @@ export const GmailOTPPasswordReset = {
     return generateRandomString(random, "0123456789", 6);
   },
 
+  // O Auth.js passa { identifier, token, provider }
   async sendVerificationRequest({
     identifier: email,
     token,
+    provider,
   }: {
     identifier: string;
     token: string;
-    provider?: unknown; // o Auth pode passar, mas não precisamos aqui
+    provider: any;
   }) {
-    const deploymentUrl =
-      process.env.CONVEX_URL ||
-      process.env.CONVEX_DEPLOYMENT_URL ||
-      process.env.NEXT_PUBLIC_CONVEX_URL;
+    const clientId = process.env.GMAIL_CLIENT_ID;
+    const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+    const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+    const sender = process.env.GMAIL_SENDER_EMAIL;
 
-    if (!deploymentUrl) {
+    if (!clientId || !clientSecret || !refreshToken || !sender) {
       throw new Error(
-        "Gmail OTP: CONVEX_URL (ou CONVEX_DEPLOYMENT_URL / NEXT_PUBLIC_CONVEX_URL) não definida. Necessário para chamar a action gmailSend."
+        "Gmail OTP: variáveis ausentes. Defina GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN e GMAIL_SENDER_EMAIL no Convex."
       );
     }
 
-    const client = new ConvexHttpClient(deploymentUrl);
+    // REDUNDÂNCIA defensiva: se futuramente você quiser colocar clientId/clientSecret dentro do provider,
+    // isso também funcionará.
+    const effectiveClientId = provider?.clientId ?? clientId;
+    const effectiveClientSecret = provider?.clientSecret ?? clientSecret;
 
-    // Chama Action Node responsável por enviar via Gmail API
-    await client.action(api.gmailSend.sendResetCodeEmail, {
-      to: email,
-      code: token,
-    });
+    const oauth2Client = new google.auth.OAuth2(
+      effectiveClientId,
+      effectiveClientSecret
+    );
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+    const subject = "Redefinição de senha — Make Your Bank";
+    const text =
+      "Recebemos uma solicitação para redefinir sua senha.\n\n" +
+      `Código de verificação: ${token}\n\n` +
+      "Se você não solicitou, ignore este e-mail.";
+
+    const rawMessage = [
+      `From: "MKY" <${sender}>`,
+      `To: <${email}>`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/plain; charset="UTF-8"',
+      `Subject: ${subject}`,
+      "",
+      text,
+    ].join("\r\n");
+
+    const raw = Buffer.from(rawMessage)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+
+    try {
+      await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+    } catch (err: any) {
+      console.error(
+        "[GmailOTPPasswordReset] Gmail API error:",
+        err?.response?.data ?? err
+      );
+      const details =
+        err?.response?.data?.error?.message ??
+        err?.message ??
+        "Erro desconhecido ao enviar via Gmail API";
+      throw new Error("Falha ao enviar e-mail via Gmail API: " + details);
+    }
   },
 };
