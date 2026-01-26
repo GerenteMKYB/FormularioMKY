@@ -32,11 +32,7 @@ export function AdminPanel() {
   };
 
   return (
-    <div import { useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
-import { toast } from "sonner";
-import { useState } from "react";
- className="rounded-3xl border border-white/10 bg-white/5 p-6">
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Painel ADM</h2>
@@ -101,11 +97,15 @@ import { useState } from "react";
               <tr key={o._id} className="border-b border-white/10 last:border-b-0">
                 <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.customerName}</td>
                 <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.customerPhone}</td>
-                <td className="py-2 px-3 text-sm text-white/70 whitespace-nowrap">{(o as any).userEmail ?? "—"}</td>
+                <td className="py-2 px-3 text-sm text-white/70 whitespace-nowrap">
+                  {(o as any).userEmail ?? "—"}
+                </td>
                 <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.selectedMachine}</td>
                 <td className="py-2 px-3 text-sm text-white/80 tabular-nums whitespace-nowrap">{o.quantity}</td>
                 <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.paymentMethod}</td>
-                <td className="py-2 px-3 text-sm text-white/90 tabular-nums whitespace-nowrap">{formatBRL(o.totalPrice)}</td>
+                <td className="py-2 px-3 text-sm text-white/90 tabular-nums whitespace-nowrap">
+                  {formatBRL(o.totalPrice)}
+                </td>
 
                 <td className="py-2 px-3 text-sm text-white/70 min-w-[320px]">
                   <div className="break-words">
