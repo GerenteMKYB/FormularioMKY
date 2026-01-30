@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
@@ -12,6 +12,7 @@ export function AdminPanel() {
   const [status, setStatus] = useState<OrderStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(50);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const queryArgs = useMemo(() => {
     return {
@@ -37,7 +38,7 @@ export function AdminPanel() {
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Painel ADM</h2>
           <p className="text-sm text-white/60">
-            Visualize e atualize pedidos (admin). Inclui endereço de entrega.
+            Visualize e atualize pedidos. Clique em <span className="text-white/80">Detalhes</span> para ver tudo já preenchido.
           </p>
         </div>
 
@@ -86,57 +87,132 @@ export function AdminPanel() {
               <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Maquininha</th>
               <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Qtd</th>
               <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Pagamento</th>
+              <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Parcelas</th>
+              <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">E-mail PagSeguro</th>
               <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Total</th>
-              <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Endereço</th>
               <th className="text-left py-2 px-3 text-xs font-semibold text-white/70">Status</th>
+              <th className="text-left py-2 px-3 text-xs font-semibold text-white/70"> </th>
             </tr>
           </thead>
 
           <tbody>
-            {orders?.map((o) => (
-              <tr key={o._id} className="border-b border-white/10 last:border-b-0">
-                <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.customerName}</td>
-                <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.customerPhone}</td>
-                <td className="py-2 px-3 text-sm text-white/70 whitespace-nowrap">
-                  {(o as any).userEmail ?? "—"}
-                </td>
-                <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.selectedMachine}</td>
-                <td className="py-2 px-3 text-sm text-white/80 tabular-nums whitespace-nowrap">{o.quantity}</td>
-                <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.paymentMethod}</td>
-                <td className="py-2 px-3 text-sm text-white/90 tabular-nums whitespace-nowrap">
-                  {formatBRL(o.totalPrice)}
-                </td>
+            {orders?.map((o) => {
+              const anyO = o as any;
+              const isOpen = openId === o._id;
+              const parcelas =
+                o.paymentMethod === "parcelado" ? (anyO.installments ?? "—") : "—";
+              const pagSeguroEmail =
+                anyO.machineType === "pagseguro" ? (anyO.pagSeguroEmail ?? "—") : "—";
 
-                <td className="py-2 px-3 text-sm text-white/70 min-w-[320px]">
-                  <div className="break-words">
-                    {(o as any).deliveryAddress ?? "—"}
-                  </div>
-                </td>
+              return (
+                <Fragment key={o._id}>
+                  <tr className="border-b border-white/10">
+                    <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.customerName}</td>
+                    <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.customerPhone}</td>
+                    <td className="py-2 px-3 text-sm text-white/70 whitespace-nowrap">
+                      {anyO.userEmail ?? "—"}
+                    </td>
+                    <td className="py-2 px-3 text-sm text-white/90 whitespace-nowrap">{o.selectedMachine}</td>
+                    <td className="py-2 px-3 text-sm text-white/80 tabular-nums whitespace-nowrap">{o.quantity}</td>
+                    <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{o.paymentMethod}</td>
+                    <td className="py-2 px-3 text-sm text-white/80 tabular-nums whitespace-nowrap">{parcelas}</td>
+                    <td className="py-2 px-3 text-sm text-white/80 whitespace-nowrap">{pagSeguroEmail}</td>
+                    <td className="py-2 px-3 text-sm text-white/90 tabular-nums whitespace-nowrap">
+                      {formatBRL(o.totalPrice)}
+                    </td>
 
-                <td className="py-2 px-3">
-                  <select
-                    className="rounded-xl border border-white/10 bg-black/20 px-2 py-1 text-sm text-white
-                               focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    value={o.status}
-                    onChange={(e) =>
-                      updateStatus({
-                        orderId: o._id as Id<"orders">,
-                        status: e.target.value as any,
-                      })
-                    }
-                  >
-                    <option value="pending">{statusLabel.pending}</option>
-                    <option value="sent">{statusLabel.sent}</option>
-                    <option value="completed">{statusLabel.completed}</option>
-                    <option value="cancelled">{statusLabel.cancelled}</option>
-                  </select>
-                </td>
-              </tr>
-            ))}
+                    <td className="py-2 px-3">
+                      <select
+                        className="rounded-xl border border-white/10 bg-black/20 px-2 py-1 text-sm text-white
+                                   focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        value={o.status}
+                        onChange={(e) =>
+                          updateStatus({
+                            orderId: o._id as Id<"orders">,
+                            status: e.target.value as any,
+                          })
+                        }
+                      >
+                        <option value="pending">{statusLabel.pending}</option>
+                        <option value="sent">{statusLabel.sent}</option>
+                        <option value="completed">{statusLabel.completed}</option>
+                        <option value="cancelled">{statusLabel.cancelled}</option>
+                      </select>
+                    </td>
+
+                    <td className="py-2 px-3">
+                      <button
+                        type="button"
+                        onClick={() => setOpenId((prev) => (prev === o._id ? null : o._id))}
+                        className="text-xs px-3 py-1 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10"
+                      >
+                        {isOpen ? "Fechar" : "Detalhes"}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {isOpen && (
+                    <tr className="border-b border-white/10 last:border-b-0">
+                      <td colSpan={11} className="px-3 py-3">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-xs text-white/50 mb-1">Dados do cliente</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Nome:</span> {o.customerName}</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Telefone:</span> {o.customerPhone}</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">E-mail:</span> {anyO.customerEmail ?? "—"}</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">E-mail (conta):</span> {anyO.userEmail ?? "—"}</div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-white/50 mb-1">Entrega</div>
+                              <div className="text-sm text-white/90 break-words">
+                                <span className="text-white/60">Endereço:</span> {anyO.deliveryAddress ?? "—"}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-white/50 mb-1">Maquininha</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Tipo:</span> {anyO.machineType}</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Modelo:</span> {o.selectedMachine}</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Quantidade:</span> {o.quantity}</div>
+                              {anyO.machineType === "pagseguro" && (
+                                <div className="text-sm text-white/90 break-words">
+                                  <span className="text-white/60">E-mail PagSeguro:</span> {anyO.pagSeguroEmail ?? "—"}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-white/50 mb-1">Pagamento</div>
+                              <div className="text-sm text-white/90"><span className="text-white/60">Método:</span> {o.paymentMethod}</div>
+                              <div className="text-sm text-white/90">
+                                <span className="text-white/60">Total:</span> {formatBRL(o.totalPrice)}
+                              </div>
+                              {o.paymentMethod === "parcelado" && (
+                                <>
+                                  <div className="text-sm text-white/90">
+                                    <span className="text-white/60">Parcelas:</span> {anyO.installments ?? 12}x
+                                  </div>
+                                  <div className="text-sm text-white/90">
+                                    <span className="text-white/60">Parcela unitária:</span>{" "}
+                                    {anyO.installmentPrice != null ? formatBRL(anyO.installmentPrice) : "—"}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
 
             {!orders?.length && (
               <tr>
-                <td className="py-4 px-3 text-sm text-white/60" colSpan={9}>
+                <td className="py-4 px-3 text-sm text-white/60" colSpan={11}>
                   Nenhum pedido encontrado.
                 </td>
               </tr>
