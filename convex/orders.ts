@@ -31,6 +31,7 @@ export const createOrder = mutation({
     customerName: v.string(),
     customerPhone: v.string(),
     customerEmail: v.optional(v.string()),
+    pagSeguroEmail: v.optional(v.string()),
     deliveryAddress: v.string(),
 
     machineType: v.union(v.literal("pagseguro"), v.literal("subadquirente")),
@@ -55,6 +56,7 @@ export const createOrder = mutation({
       customerName: args.customerName,
       customerPhone: args.customerPhone,
       customerEmail: args.customerEmail,
+      pagSeguroEmail: args.pagSeguroEmail,
       deliveryAddress: args.deliveryAddress,
 
       machineType: args.machineType,
