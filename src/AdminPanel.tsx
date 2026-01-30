@@ -77,7 +77,8 @@ export function AdminPanel() {
   const updateStatus = useMutation(api.admin.updateAnyOrderStatus);
 
   const statusLabel: Record<OrderStatus, string> = {
-    pending: "Pendente",
+    pending: "Aguardando Pagamento",
+    sent: "Pago",
     sent: "Enviado",
     completed: "Concluído",
     cancelled: "Cancelado",
@@ -121,7 +122,8 @@ export function AdminPanel() {
             onChange={(e) => setStatus(e.target.value as any)}
           >
             <option value="all">Todos</option>
-            <option value="pending">Pendente</option>
+            <option value="pending">Aguardando Pagamento</option>
+            <option value="sent">Pago</option>
             <option value="sent">Enviado</option>
             <option value="completed">Concluído</option>
             <option value="cancelled">Cancelado</option>
@@ -210,7 +212,7 @@ export function AdminPanel() {
                         handleStatusChange(o._id as Id<"orders">, e.target.value as any)
                       }
                     >
-                      <option value="pending">Pendente</option>
+                      <option value="pending">Aguardando Pagamento</option>
                       <option value="sent">Enviado</option>
                       <option value="completed">Concluído</option>
                       <option value="cancelled">Cancelado</option>
@@ -344,7 +346,7 @@ export function AdminPanel() {
                         setSelected((p: any) => (p ? { ...p, status: newStatus } : p));
                       }}
                     >
-                      <option value="pending">Pendente</option>
+                      <option value="pending">Aguardando Pagamento</option>
                       <option value="sent">Enviado</option>
                       <option value="completed">Concluído</option>
                       <option value="cancelled">Cancelado</option>
