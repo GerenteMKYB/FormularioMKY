@@ -71,11 +71,7 @@ const subMachines: MachineOption[] = [
   {
     name: "S920",
     tiers: [
-      { min: 1, max: 10, unitPrice: 525.0 },
-      { min: 11, max: 19, unitPrice: 475.0 },
-      { min: 20, max: 49, unitPrice: 425.0 },
-      { min: 50, max: 99, unitPrice: 375.0 },
-      { min: 100, unitPrice: 325.0 },
+      { min: 1, max: 10, unitPrice: 245.0 },
     ],
     installments: 12,
     allowAutoInstallment: true, // parcela calculada (sem juros)
