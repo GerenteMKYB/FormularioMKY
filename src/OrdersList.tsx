@@ -77,7 +77,7 @@ export function OrdersList({ isAdmin }: { isAdmin: boolean }) {
                   {order.installmentPrice != null && order.paymentMethod === "parcelado" && (
                     <span className="text-white/60">
                       {" "}
-                      (parcela: {formatBRL(order.installmentPrice)})
+                      ({order.installments ?? 12}x de {formatBRL(order.installmentPrice)})
                     </span>
                   )}
                 </div>
