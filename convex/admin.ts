@@ -55,7 +55,7 @@ export const listAllOrders = query({
     if (args.search) {
       const s = args.search.toLowerCase();
       return rows.filter((o: any) => {
-        const hay = `${o.customerName ?? ""} ${o.customerPhone ?? ""} ${o.customerEmail ?? ""} ${o.userEmail ?? ""} ${o.pagSeguroEmail ?? ""} ${o.selectedMachine ?? ""}`.toLowerCase();
+        const hay = `${o.customerName ?? ""} ${o.customerPhone ?? ""} ${o.customerEmail ?? ""} ${o.userEmail ?? ""} ${o.selectedMachine ?? ""} ${o.pagSeguroEmail ?? ""} ${o.deliveryAddress ?? ""}`.toLowerCase();
         return hay.includes(s);
       });
     }
