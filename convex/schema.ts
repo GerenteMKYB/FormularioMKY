@@ -22,6 +22,7 @@ const applicationTables = {
 
     paymentMethod: v.union(v.literal("avista"), v.literal("parcelado")),
     totalPrice: v.number(),
+    installments: v.optional(v.number()),
     installmentPrice: v.optional(v.number()),
 
     status: v.union(
