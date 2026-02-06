@@ -279,7 +279,10 @@ export function MaquininhasForm() {
 
     const unitPrice = getUnitPrice(selectedMachine, qty);
     const totalPrice = unitPrice * qty;
-    const unitInstallment = getUnitInstallment(selectedMachine, qty);
+    const unitInstallment =
+      formData.paymentMethod === "parcelado"
+        ? unitPrice / installmentsChosen
+        : getUnitInstallment(selectedMachine, qty);
 
     try {
       await createOrder({

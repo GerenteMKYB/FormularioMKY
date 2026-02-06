@@ -328,7 +328,7 @@ export function AdminPanel() {
 
                       {selected.paymentMethod === "parcelado" && selected.installmentPrice != null && (
                         <div className="mt-1 text-xs text-white/60 tabular-nums whitespace-nowrap">
-                          {selected.installments ?? 12}x de {formatBRL(selected.installmentPrice)}
+                          {selected.installments ?? 12}x de {formatBRL((selected.totalPrice ?? 0) / (selected.installments ?? 12))}
                         </div>
                       )}
                     </div>
